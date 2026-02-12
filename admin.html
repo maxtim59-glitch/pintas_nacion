@@ -171,7 +171,8 @@
 
         if (data) {
             data.forEach(p => {
-                const foto = p.foto_url ? `<img src="${p.foto_url}" width="60" height="60" title="Pasa el mouse para ampliar">` : '<i>Sin foto</i>';
+                const fotoRaw = formatearUrlFoto(p.foto_url);
+                const foto = fotoRaw ? `<img src="${fotoRaw}" width="60" height="60" title="Pasa el mouse para ampliar">` : '<i>Sin foto</i>';
                 
                 // CORRECCIÓN DE NULL: Prioridad a la descripción para el título
                 const titulo = p.descripcion || p.nombre_patrocinador || "Zona sin descripción";
@@ -245,7 +246,8 @@
 
             Object.values(grupos).forEach(grupo => {
                 const idsJson = JSON.stringify(grupo.ids);
-                const foto = grupo.foto_url ? `<img src="${grupo.foto_url}" width="60" height="60" title="Pasa el mouse para ampliar">` : '<i>Sin foto</i>';
+                const fotoRaw = formatearUrlFoto(grupo.foto_url);
+                const foto = fotoRaw ? `<img src="${fotoRaw}" width="60" height="60" title="Pasa el mouse para ampliar">` : '<i>Sin foto</i>';
                 const estadoFinal = obtenerEstadoGrupo(grupo.estados);
                 const sublinea = `<br><small style="color:#bbb;">Subido por: <b>${grupo.nombre_persona}</b> | Fecha: ${grupo.fecha || 'N/A'} | Puntos: ${grupo.ids.length}</small>`;
                 const motivoRechazo = grupo.mensaje_adm ? `<br><small style="color:#ff9f43;">Nota Admin: ${grupo.mensaje_adm}</small>` : '';
@@ -288,6 +290,14 @@
         if (estados.has('pendiente')) return 'pendiente';
         if (estados.has('rechazado')) return 'rechazado';
         return 'aprobado';
+    }
+
+    function formatearUrlFoto(url) {
+        if (!url) return '';
+        if (url.includes('/storage/v1/object/fotos/') && !url.includes('/public/')) {
+            return url.replace('/storage/v1/object/fotos/', '/storage/v1/object/public/fotos/');
+        }
+        return url;
     }
 
     function extraerRutaStorage(fotoUrl) {
