@@ -405,7 +405,7 @@ async function cargarPuntosAprobados() {
             });
             if (estado === 'aprobado') {
                 const fechaFormateada = p.fecha_registro ? formatearFecha(p.fecha_registro) : 'Sin fecha';
-                const fotoHtml = p.foto_url ? `<img src="${p.foto_url}" width="150px" style="border-radius:8px; margin:10px 0;">` : '';
+                const fotoHtml = p.foto_url ? `<img src="${formatearUrlFoto(p.foto_url)}" width="150px" style="border-radius:8px; margin:10px 0;">` : '';
                 
                 const marcador = L.marker([lat, lng]).addTo(map)
                 .bindPopup(`<div style="text-align:center;">
@@ -417,7 +417,7 @@ async function cargarPuntosAprobados() {
                 registrarMarcadorPinta(marcador);
             } else if (estado === 'pendiente') {
                 const fechaFormateada = p.fecha_registro ? formatearFecha(p.fecha_registro) : 'Sin fecha';
-                const fotoHtml = p.foto_url ? `<img src="${p.foto_url}" width="150px" style="border-radius:8px; margin:10px 0;">` : '';
+                const fotoHtml = p.foto_url ? `<img src="${formatearUrlFoto(p.foto_url)}" width="150px" style="border-radius:8px; margin:10px 0;">` : '';
                 
                 const marcador = L.marker([lat, lng], {
                     opacity: 0.5,
@@ -517,6 +517,15 @@ function normalizarNumero(valor) {
 
 function normalizarEstado(estado) {
     return String(estado || '').trim().toLowerCase();
+}
+
+function formatearUrlFoto(url) {
+    if (!url) return '';
+    // Asegurar que la URL sea pública para evitar errores 400
+    if (url.includes('/storage/v1/object/fotos/') && !url.includes('/public/')) {
+        return url.replace('/storage/v1/object/fotos/', '/storage/v1/object/public/fotos/');
+    }
+    return url;
 }
 
 function obtenerDescripcionBase(descripcion) {
