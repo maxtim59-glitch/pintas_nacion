@@ -378,24 +378,32 @@ document.addEventListener('keydown', function(e) {
 async function cargarPuntosAprobados() {
     if (!SUPABASE_ENABLED) return;
     const { data, error } = await _supabase.from('puntos').select('*');
-    if (error) return;
+    if (error) {
+        console.error('Error al cargar puntos:', error.message);
+        return;
+    }
     if (data) {
         pintasRegistradas = [];
         data.forEach(p => {
-            const lat = normalizarNumero(p.latitud);
-            const lng = normalizarNumero(p.longitud);
+            const lat = normalizarNumero(
+                p.latitud ?? p.lat ?? p.latitude
+            );
+            const lng = normalizarNumero(
+                p.longitud ?? p.lng ?? p.longitude
+            );
             if (lat === null || lng === null) {
                 return;
             }
+            const estado = normalizarEstado(p.estado);
             pintasRegistradas.push({
                 id: p.id,
                 lat,
                 lng,
                 fecha: p.fecha_registro,
                 descripcion: p.descripcion,
-                estado: p.estado
+                estado
             });
-            if (p.estado === 'aprobado') {
+            if (estado === 'aprobado') {
                 const fechaFormateada = p.fecha_registro ? formatearFecha(p.fecha_registro) : 'Sin fecha';
                 const fotoHtml = p.foto_url ? `<img src="${p.foto_url}" width="150px" style="border-radius:8px; margin:10px 0;">` : '';
                 
@@ -407,7 +415,7 @@ async function cargarPuntosAprobados() {
                     ${fotoHtml}
                 </div>`);
                 registrarMarcadorPinta(marcador);
-            } else if (p.estado === 'pendiente') {
+            } else if (estado === 'pendiente') {
                 const fechaFormateada = p.fecha_registro ? formatearFecha(p.fecha_registro) : 'Sin fecha';
                 const fotoHtml = p.foto_url ? `<img src="${p.foto_url}" width="150px" style="border-radius:8px; margin:10px 0;">` : '';
                 
@@ -434,7 +442,10 @@ async function cargarPuntosAprobados() {
 async function cargarRutasAprobadas() {
     if (!SUPABASE_ENABLED) return;
     const { data, error } = await _supabase.from('rutas').select('*');
-    if (error) return;
+    if (error) {
+        console.error('Error al cargar rutas:', error.message);
+        return;
+    }
     if (data) {
         const rutasOrdenadas = [];
         const grupos = {};
