@@ -2,7 +2,7 @@
 const SUPABASE_URL = 'https://ilevrkjvbwojbpkalppt.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_NMLiDrhXGfLcBy9YXsHGiQ__L0PPQSQ';
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-const SUPABASE_ENABLED = false;
+const SUPABASE_ENABLED = true;
 const DEMO_RUTAS = [
     {
         id: 101,
