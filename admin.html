@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Panel Admin - Validacion de Pintas</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #1a1a1a; color: white; padding: 20px; margin: 0; }
+        .container { max-width: 1000px; margin: auto; background: #2d2d2d; padding: 20px; border-radius: 12px; border-top: 5px solid #27ae60; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        h1 { color: #27ae60; text-align: center; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #252525; }
+        th, td { padding: 15px; border-bottom: 1px solid #444; text-align: left; }
+        th { background: #27ae60; color: white; text-transform: uppercase; font-size: 0.9em; }
+        .btn { border: none; padding: 8px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; color: white; margin: 2px; transition: 0.2s; }
+        .btn-aprobar { background: #27ae60; }
+        .btn-aprobar:hover { background: #219150; }
+        .btn-rechazar { background: #e67e22; }
+        .btn-eliminar { background: #c0392b; }
+        .badge { padding: 5px 10px; border-radius: 20px; font-size: 0.8em; text-transform: uppercase; font-weight: bold; }
+        .pendiente { background: #f1c40f; color: black; }
+        .aprobado { background: #27ae60; }
+        .rechazado { background: #e67e22; }
+        img { border-radius: 4px; transition: 0.3s; cursor: zoom-in; object-fit: cover; }
+        img:hover { transform: scale(4); position: relative; z-index: 100; border: 2px solid white; box-shadow: 0 0 20px rgba(0,0,0,0.8); }
+        .login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #1a1a1a; display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .login-box { text-align: center; background: #2d2d2d; padding: 40px; border-radius: 15px; border: 1px solid #444; }
+        input[type="email"],
+        input[type="password"] { padding: 12px; border-radius: 5px; border: 1px solid #444; background: #1a1a1a; color: white; margin-bottom: 12px; width: 240px; display: block; }
+    </style>
+</head>
+<body>
+
+<div id="login" class="login-overlay">
+    <div class="login-box">
+        <h2>Acceso Restringido</h2>
+        <input type="email" id="admin-email" placeholder="Correo de Admin">
+        <input type="password" id="admin-pass" placeholder="Contrasena de Admin">
+        <div id="login-error" style="color:#e74c3c; font-size:0.85em; min-height:18px;"></div>
+        <button class="btn btn-aprobar" onclick="verificarAdmin()">Entrar al Panel</button>
+    </div>
+</div>
+
+<div class="container">
+    <h1>Validacion de Pintas</h1>
+    <p style="text-align: center; color: #aaa;">Gestiona los reportes recibidos desde el mapa.</p>
+    <p style="text-align: center; margin: 10px 0 0;">
+        <button class="btn btn-aprobar" onclick="descargarCsvPintas()">Descargar CSV Pintas</button>
+        <button class="btn btn-aprobar" onclick="descargarCsvPintasAprobadas()">Descargar CSV Pintas Aprobadas</button>
+    </p>
+    <table>
+        <thead>
+            <tr>
+                <th>Foto</th>
+                <th>Detalles del Punto</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody id="tabla-puntos"></tbody>
+    </table>
+
+    <h1 style="margin-top: 40px;">Validacion de Rutas</h1>
+    <p style="text-align: center; color: #aaa;">Gestiona los registros de rutas.</p>
+    <p style="text-align: center; margin: 10px 0 0;">
+        <button class="btn btn-aprobar" onclick="descargarCsvRutas()">Descargar CSV Rutas</button>
+        <button class="btn btn-aprobar" onclick="descargarCsvRutasAprobadas()">Descargar CSV Rutas Aprobadas</button>
+    </p>
+    <table>
+        <thead>
+            <tr>
+                <th>Foto</th>
+                <th>Detalles de la Ruta</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody id="tabla-rutas"></tbody>
+    </table>
+</div>
+
+<script>
+    const SUPABASE_URL = 'https://ilevrkjvbwojbpkalppt.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_NMLiDrhXGfLcBy9YXsHGiQ__L0PPQSQ';
+    const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const SUPABASE_ENABLED = false;
+
+    function setModoDemoAdmin() {
+        const login = document.getElementById('login');
+        if (login) login.style.display = 'none';
+
+        const tbodyPuntos = document.getElementById('tabla-puntos');
+        const tbodyRutas = document.getElementById('tabla-rutas');
+        const mensaje = '<tr><td colspan="4" style="text-align:center; color:#bbb;">Supabase desactivada temporalmente (modo demo).</td></tr>';
+        if (tbodyPuntos) tbodyPuntos.innerHTML = mensaje;
+        if (tbodyRutas) tbodyRutas.innerHTML = mensaje;
+
+        document.querySelectorAll('button[onclick^="descargarCsv"]').forEach((btn) => {
+            btn.disabled = true;
+            btn.style.opacity = '0.6';
+            btn.style.cursor = 'not-allowed';
+        });
+    }
+
+    async function verificarAdmin() {
+        if (!SUPABASE_ENABLED) {
+            alert('Supabase esta desactivada temporalmente.');
+            return;
+        }
+        const email = document.getElementById('admin-email').value.trim();
+        const password = document.getElementById('admin-pass').value;
+        const errorBox = document.getElementById('login-error');
+        if (errorBox) errorBox.textContent = '';
+
+        const { error } = await _supabase.auth.signInWithPassword({
+            email,
+            password
+        });
+
+        if (error) {
+            if (errorBox) errorBox.textContent = 'Correo o contrasena invalida.';
+            return;
+        }
+
+        document.getElementById('login').style.display = 'none';
+        cargarReporte();
+        cargarRutas();
+    }
+
+    async function verificarSesion() {
+        if (!SUPABASE_ENABLED) {
+            setModoDemoAdmin();
+            return;
+        }
+        const { data } = await _supabase.auth.getSession();
+        if (data && data.session) {
+            document.getElementById('login').style.display = 'none';
+            cargarReporte();
+            cargarRutas();
+        } else {
+            document.getElementById('login').style.display = 'flex';
+        }
+    }
+
+    _supabase.auth.onAuthStateChange((_event, session) => {
+        if (!SUPABASE_ENABLED) return;
+        if (session) {
+            document.getElementById('login').style.display = 'none';
+            cargarReporte();
+            cargarRutas();
+        } else {
+            document.getElementById('login').style.display = 'flex';
+        }
+    });
+
+    verificarSesion();
+
+    async function cargarReporte() {
+        if (!SUPABASE_ENABLED) return;
+        const { data, error } = await _supabase
+            .from('puntos')
+            .select('*')
+            .order('id', { ascending: false });
+
+        if (error) {
+            console.error("Error:", error.message);
+            return;
+        }
+
+        const tbody = document.getElementById('tabla-puntos');
+        tbody.innerHTML = "";
+
+        if (data) {
+            data.forEach(p => {
+                const foto = p.foto_url ? `<img src="${p.foto_url}" width="60" height="60" title="Pasa el mouse para ampliar">` : '<i>Sin foto</i>';
+                
+                // CORRECCIÓN DE NULL: Prioridad a la descripción para el título
+                const titulo = p.descripcion || p.nombre_patrocinador || "Zona sin descripción";
+                const sublinea = `<br><small style="color:#bbb;">Subido por: <b>${p.nombre_persona || 'Anónimo'}</b> | Tipo: ${p.tipo_anuncio || 'N/A'}</small>`;
+                const motivoRechazo = p.mensaje_adm ? `<br><small style="color:#ff9f43;">Nota Admin: ${p.mensaje_adm}</small>` : '';
+                
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${foto}</td>
+                        <td>
+                            <span style="color:#27ae60; font-weight:bold; font-size:1.1em;">${titulo}</span>
+                            ${sublinea}
+                            ${motivoRechazo}
+                        </td>
+                        <td><span class="badge ${p.estado}">${p.estado}</span></td>
+                        <td>
+                            ${p.estado === 'pendiente' ? `<button class="btn btn-aprobar" onclick="actualizar(${p.id}, 'aprobado')">Aprobar ✅</button>` : ''}
+                            <button class="btn btn-aprobar" onclick="editar(${p.id})">Editar ✏️</button>
+                            <button class="btn btn-rechazar" onclick="rechazar(${p.id})">Rechazar ✖</button>
+                            <button class="btn btn-eliminar" onclick="eliminar(${p.id})">Eliminar 🗑</button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+    }
+
+    async function cargarRutas() {
+        if (!SUPABASE_ENABLED) return;
+        const { data, error } = await _supabase
+            .from('rutas')
+            .select('*')
+            .order('id', { ascending: false });
+
+        if (error) {
+            console.error("Error:", error.message);
+            return;
+        }
+
+        const tbody = document.getElementById('tabla-rutas');
+        tbody.innerHTML = "";
+
+        if (data) {
+            const grupos = {};
+
+            data.forEach(r => {
+                const baseRaw = obtenerDescripcionBase(r.descripcion);
+                const baseKey = normalizarTexto(baseRaw);
+                const fecha = (r.fecha_registro || '').trim();
+                const clave = `${baseKey}||${fecha}`;
+                if (!grupos[clave]) {
+                    grupos[clave] = {
+                        descripcion: baseRaw || 'Ruta sin descripcion',
+                        fecha,
+                        ids: [],
+                        estados: new Set(),
+                        foto_url: r.foto_url || null,
+                        nombre_persona: r.nombre_persona || 'Anonimo',
+                        mensaje_adm: r.mensaje_adm || ''
+                    };
+                }
+                grupos[clave].ids.push(r.id);
+                grupos[clave].estados.add(r.estado);
+                if (!grupos[clave].foto_url && r.foto_url) {
+                    grupos[clave].foto_url = r.foto_url;
+                }
+                if (!grupos[clave].mensaje_adm && r.mensaje_adm) {
+                    grupos[clave].mensaje_adm = r.mensaje_adm;
+                }
+            });
+
+            Object.values(grupos).forEach(grupo => {
+                const idsJson = JSON.stringify(grupo.ids);
+                const foto = grupo.foto_url ? `<img src="${grupo.foto_url}" width="60" height="60" title="Pasa el mouse para ampliar">` : '<i>Sin foto</i>';
+                const estadoFinal = obtenerEstadoGrupo(grupo.estados);
+                const sublinea = `<br><small style="color:#bbb;">Subido por: <b>${grupo.nombre_persona}</b> | Fecha: ${grupo.fecha || 'N/A'} | Puntos: ${grupo.ids.length}</small>`;
+                const motivoRechazo = grupo.mensaje_adm ? `<br><small style="color:#ff9f43;">Nota Admin: ${grupo.mensaje_adm}</small>` : '';
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${foto}</td>
+                        <td>
+                            <span style="color:#27ae60; font-weight:bold; font-size:1.1em;">${grupo.descripcion}</span>
+                            ${sublinea}
+                            ${motivoRechazo}
+                        </td>
+                        <td><span class="badge ${estadoFinal}">${estadoFinal}</span></td>
+                        <td>
+                            ${estadoFinal === 'pendiente' ? `<button class="btn btn-aprobar" onclick='actualizarRutaGrupo(${idsJson}, "aprobado")'>Aprobar ✅</button>` : ''}
+                            <button class="btn btn-aprobar" onclick='editarRutaGrupo(${idsJson})'>Editar ✏️</button>
+                            <button class="btn btn-rechazar" onclick='rechazarRutaGrupo(${idsJson})'>Rechazar ✖</button>
+                            <button class="btn btn-eliminar" onclick='eliminarRutaGrupo(${idsJson})'>Eliminar 🗑</button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+    }
+
+    function obtenerDescripcionBase(descripcion) {
+        const texto = descripcion || '';
+        const partes = texto.split(/ \| (Coord|Inicio|Punto inicio|Direccion|Coordenada):/);
+        return partes[0].replace(/\s*\(\d+\)\s*$/, '').trim();
+    }
+
+    function normalizarTexto(texto) {
+        return String(texto || '')
+            .toLowerCase()
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    function obtenerEstadoGrupo(estados) {
+        if (estados.has('pendiente')) return 'pendiente';
+        if (estados.has('rechazado')) return 'rechazado';
+        return 'aprobado';
+    }
+
+    function extraerRutaStorage(fotoUrl) {
+        if (!fotoUrl) return null;
+        try {
+            const url = new URL(fotoUrl);
+            const path = url.pathname || '';
+            const markerPublic = '/storage/v1/object/public/fotos/';
+            const markerPrivate = '/storage/v1/object/fotos/';
+            if (path.includes(markerPublic)) {
+                return decodeURIComponent(path.split(markerPublic)[1] || '');
+            }
+            if (path.includes(markerPrivate)) {
+                return decodeURIComponent(path.split(markerPrivate)[1] || '');
+            }
+            if (path.startsWith('/fotos/')) {
+                return decodeURIComponent(path.replace('/fotos/', ''));
+            }
+            return null;
+        } catch (_err) {
+            return null;
+        }
+    }
+
+    async function eliminarFotosPorUrls(urls) {
+        const rutas = urls
+            .map(extraerRutaStorage)
+            .filter((ruta) => ruta && ruta.trim());
+        if (rutas.length === 0) return null;
+        const { error } = await _supabase.storage.from('fotos').remove(rutas);
+        return error || null;
+    }
+
+    function getCsvColumns(rows, preferredColumns) {
+        const columnas = [];
+        const agregadas = new Set();
+
+        preferredColumns.forEach((col) => {
+            if (rows.some((row) => Object.prototype.hasOwnProperty.call(row, col))) {
+                columnas.push(col);
+                agregadas.add(col);
+            }
+        });
+
+        rows.forEach((row) => {
+            Object.keys(row).forEach((col) => {
+                if (!agregadas.has(col)) {
+                    columnas.push(col);
+                    agregadas.add(col);
+                }
+            });
+        });
+
+        return columnas;
+    }
+
+    function convertirACsv(rows, columns) {
+        const escapeValue = (value) => {
+            if (value === null || value === undefined) return '';
+            const texto = String(value);
+            if (/[",\n\r]/.test(texto)) {
+                return `"${texto.replace(/"/g, '""')}"`;
+            }
+            return texto;
+        };
+
+        const header = columns.map(escapeValue).join(',');
+        const body = rows.map((row) => columns.map((col) => escapeValue(row[col])).join(','));
+        return [header, ...body].join('\r\n');
+    }
+
+    function descargarArchivo(nombre, contenido) {
+        const blob = new Blob([contenido], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = nombre;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }
+
+    async function descargarCsvPintas() {
+        if (!SUPABASE_ENABLED) {
+            alert('Supabase esta desactivada temporalmente.');
+            return;
+        }
+        const { data, error } = await _supabase
+            .from('puntos')
+            .select('*')
+            .order('id', { ascending: false });
+
+        if (error) {
+            alert(error.message);
+            return;
+        }
+
+        const filas = data || [];
+        const columnas = getCsvColumns(filas, [
+            'id',
+            'descripcion',
+            'nombre_persona',
+            'tipo_anuncio',
+            'fecha_registro',
+            'latitud',
+            'longitud',
+            'foto_url',
+            'estado',
+            'mensaje_adm'
+        ]);
+        const csv = convertirACsv(filas, columnas);
+        descargarArchivo('pintas.csv', csv);
+    }
+
+    async function descargarCsvPintasAprobadas() {
+        if (!SUPABASE_ENABLED) {
+            alert('Supabase esta desactivada temporalmente.');
+            return;
+        }
+        const { data, error } = await _supabase
+            .from('puntos')
+            .select('*')
+            .eq('estado', 'aprobado')
+            .order('id', { ascending: false });
+
+        if (error) {
+            alert(error.message);
+            return;
+        }
+
+        const filas = data || [];
+        const columnas = getCsvColumns(filas, [
+            'id',
+            'descripcion',
+            'nombre_persona',
+            'tipo_anuncio',
+            'fecha_registro',
+            'latitud',
+            'longitud',
+            'foto_url',
+            'estado',
+            'mensaje_adm'
+        ]);
+        const csv = convertirACsv(filas, columnas);
+        descargarArchivo('pintas_aprobadas.csv', csv);
+    }
+
+    async function descargarCsvRutas() {
+        if (!SUPABASE_ENABLED) {
+            alert('Supabase esta desactivada temporalmente.');
+            return;
+        }
+        const { data, error } = await _supabase
+            .from('rutas')
+            .select('*')
+            .order('id', { ascending: false });
+
+        if (error) {
+            alert(error.message);
+            return;
+        }
+
+        const filas = data || [];
+        const columnas = getCsvColumns(filas, [
+            'id',
+            'descripcion',
+            'nombre_persona',
+            'fecha_registro',
+            'latitud',
+            'longitud',
+            'foto_url',
+            'estado',
+            'mensaje_adm'
+        ]);
+        const csv = convertirACsv(filas, columnas);
+        descargarArchivo('rutas.csv', csv);
+    }
+
+    async function descargarCsvRutasAprobadas() {
+        if (!SUPABASE_ENABLED) {
+            alert('Supabase esta desactivada temporalmente.');
+            return;
+        }
+        const { data, error } = await _supabase
+            .from('rutas')
+            .select('*')
+            .eq('estado', 'aprobado')
+            .order('id', { ascending: false });
+
+        if (error) {
+            alert(error.message);
+            return;
+        }
+
+        const filas = data || [];
+        const columnas = getCsvColumns(filas, [
+            'id',
+            'descripcion',
+            'nombre_persona',
+            'fecha_registro',
+            'latitud',
+            'longitud',
+            'foto_url',
+            'estado',
+            'mensaje_adm'
+        ]);
+        const csv = convertirACsv(filas, columnas);
+        descargarArchivo('rutas_aprobadas.csv', csv);
+    }
+
+    async function actualizar(id, nuevoEstado) {
+        const { error } = await _supabase.from('puntos').update({ estado: nuevoEstado }).eq('id', id);
+        if (error) alert(error.message);
+        cargarReporte();
+    }
+
+    async function actualizarRuta(id, nuevoEstado) {
+        const { error } = await _supabase.from('rutas').update({ estado: nuevoEstado }).eq('id', id);
+        if (error) alert(error.message);
+        cargarRutas();
+    }
+
+    async function actualizarRutaGrupo(ids, nuevoEstado) {
+        const { error } = await _supabase.from('rutas').update({ estado: nuevoEstado }).in('id', ids);
+        if (error) alert(error.message);
+        cargarRutas();
+    }
+
+    async function editar(id) {
+        const { data, error } = await _supabase
+            .from('puntos')
+            .select('descripcion, nombre_persona, tipo_anuncio, fecha_registro')
+            .eq('id', id)
+            .single();
+
+        if (error || !data) {
+            alert('No se pudo cargar el registro');
+            return;
+        }
+
+        const nuevaDescripcion = prompt('Descripcion del punto:', data.descripcion || '');
+        if (nuevaDescripcion === null) return;
+
+        const nuevoPromotor = prompt('Nombre del promotor:', data.nombre_persona || '');
+        if (nuevoPromotor === null) return;
+
+        const nuevoTipo = prompt('Tipo de anuncio:', data.tipo_anuncio || '');
+        if (nuevoTipo === null) return;
+
+        const nuevaFecha = prompt('Fecha (YYYY-MM-DD):', data.fecha_registro || '');
+        if (nuevaFecha === null) return;
+
+        const { error: updateError } = await _supabase
+            .from('puntos')
+            .update({
+                descripcion: nuevaDescripcion,
+                nombre_persona: nuevoPromotor,
+                tipo_anuncio: nuevoTipo,
+                fecha_registro: nuevaFecha
+            })
+            .eq('id', id);
+
+        if (updateError) {
+            alert(updateError.message);
+        }
+        cargarReporte();
+    }
+
+    async function editarRuta(id) {
+        const { data, error } = await _supabase
+            .from('rutas')
+            .select('descripcion, nombre_persona, fecha_registro')
+            .eq('id', id)
+            .single();
+
+        if (error || !data) {
+            alert('No se pudo cargar el registro');
+            return;
+        }
+
+        const nuevaDescripcion = prompt('Direccion de la ruta:', data.descripcion || '');
+        if (nuevaDescripcion === null) return;
+
+        const nuevoPromotor = prompt('Nombre de quien lo sube:', data.nombre_persona || '');
+        if (nuevoPromotor === null) return;
+
+        const nuevaFecha = prompt('Fecha (YYYY-MM-DD):', data.fecha_registro || '');
+        if (nuevaFecha === null) return;
+
+        const { error: updateError } = await _supabase
+            .from('rutas')
+            .update({
+                descripcion: nuevaDescripcion,
+                nombre_persona: nuevoPromotor,
+                fecha_registro: nuevaFecha
+            })
+            .eq('id', id);
+
+        if (updateError) {
+            alert(updateError.message);
+        }
+        cargarRutas();
+    }
+
+    async function editarRutaGrupo(ids) {
+        const { data, error } = await _supabase
+            .from('rutas')
+            .select('descripcion, nombre_persona, fecha_registro')
+            .in('id', ids)
+            .order('id', { ascending: true })
+            .limit(1);
+
+        if (error || !data || !data[0]) {
+            alert('No se pudo cargar el registro');
+            return;
+        }
+
+        const baseDescripcion = obtenerDescripcionBase(data[0].descripcion);
+        const nuevaDescripcion = prompt('Direccion de la ruta:', baseDescripcion || '');
+        if (nuevaDescripcion === null) return;
+
+        const nuevoPromotor = prompt('Nombre de quien lo sube:', data[0].nombre_persona || '');
+        if (nuevoPromotor === null) return;
+
+        const nuevaFecha = prompt('Fecha (YYYY-MM-DD):', data[0].fecha_registro || '');
+        if (nuevaFecha === null) return;
+
+        const { error: updateError } = await _supabase
+            .from('rutas')
+            .update({
+                descripcion: nuevaDescripcion,
+                nombre_persona: nuevoPromotor,
+                fecha_registro: nuevaFecha
+            })
+            .in('id', ids);
+
+        if (updateError) {
+            alert(updateError.message);
+        }
+        cargarRutas();
+    }
+
+    async function rechazar(id) {
+        const motivo = prompt("Motivo del rechazo:");
+        if (!motivo) return;
+        
+        const { error } = await _supabase
+            .from('puntos')
+            .update({ estado: 'rechazado', mensaje_adm: motivo }) 
+            .eq('id', id);
+            
+        if (error) alert(error.message);
+        cargarReporte();
+    }
+
+    async function rechazarRuta(id) {
+        const motivo = prompt("Motivo del rechazo:");
+        if (!motivo) return;
+
+        const { error } = await _supabase
+            .from('rutas')
+            .update({ estado: 'rechazado', mensaje_adm: motivo })
+            .eq('id', id);
+
+        if (error) alert(error.message);
+        cargarRutas();
+    }
+
+    async function rechazarRutaGrupo(ids) {
+        const motivo = prompt("Motivo del rechazo:");
+        if (!motivo) return;
+
+        const { error } = await _supabase
+            .from('rutas')
+            .update({ estado: 'rechazado', mensaje_adm: motivo })
+            .in('id', ids);
+
+        if (error) alert(error.message);
+        cargarRutas();
+    }
+
+    async function eliminar(id) {
+        if (confirm("¿Estás seguro de eliminar permanentemente este registro?")) {
+            const { data, error: fetchError } = await _supabase
+                .from('puntos')
+                .select('foto_url')
+                .eq('id', id)
+                .single();
+            if (fetchError) {
+                alert(fetchError.message);
+                return;
+            }
+
+            const fotoError = await eliminarFotosPorUrls([data && data.foto_url]);
+
+            const { error } = await _supabase.from('puntos').delete().eq('id', id);
+            if (error) {
+                alert(error.message);
+            } else if (fotoError) {
+                alert('Se elimino el punto, pero no se pudo borrar la foto en storage.');
+            }
+            cargarReporte();
+        }
+    }
+
+    async function eliminarRuta(id) {
+        if (confirm("¿Estás seguro de eliminar permanentemente este registro?")) {
+            const { data, error: fetchError } = await _supabase
+                .from('rutas')
+                .select('foto_url')
+                .eq('id', id)
+                .single();
+            if (fetchError) {
+                alert(fetchError.message);
+                return;
+            }
+
+            const fotoError = await eliminarFotosPorUrls([data && data.foto_url]);
+
+            const { error } = await _supabase.from('rutas').delete().eq('id', id);
+            if (error) {
+                alert(error.message);
+            } else if (fotoError) {
+                alert('Se elimino la ruta, pero no se pudo borrar la foto en storage.');
+            }
+            cargarRutas();
+        }
+    }
+
+    async function eliminarRutaGrupo(ids) {
+        if (confirm("¿Estás seguro de eliminar permanentemente esta ruta?")) {
+            const { data, error: fetchError } = await _supabase
+                .from('rutas')
+                .select('foto_url')
+                .in('id', ids);
+            if (fetchError) {
+                alert(fetchError.message);
+                return;
+            }
+
+            const urls = (data || []).map((row) => row.foto_url).filter(Boolean);
+            const fotoError = await eliminarFotosPorUrls(urls);
+
+            const { error } = await _supabase.from('rutas').delete().in('id', ids);
+            if (error) {
+                alert(error.message);
+            } else if (fotoError) {
+                alert('Se eliminaron las rutas, pero no se pudo borrar alguna foto en storage.');
+            }
+            cargarRutas();
+        }
+    }
+</script>
+</body>
+</html>
